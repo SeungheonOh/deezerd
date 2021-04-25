@@ -11,7 +11,7 @@ import (
 
 const (
     CONN_HOST = "localhost"
-    CONN_PORT = "6600"
+    CONN_PORT = "6601"
     CONN_TYPE = "tcp"
 )
 

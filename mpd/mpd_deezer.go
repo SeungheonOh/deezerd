@@ -138,6 +138,18 @@ func (p *DeezerPlayer) Elapsed() uint {
   return uint(elapsed.Seconds())
 }
 
+func (p *DeezerPlayer) State() uint {
+  if p.control.Paused {
+    return STATE_PAUSE
+  } else {
+    return STATE_PLAY
+  }
+}
+
+func (p *DeezerPlayer) Seek(sec float64) {
+  (*p.streamer).Seek((*p.format).SampleRate.N(time.Duration(sec) * time.Second))
+}
+
 func (p *DeezerPlayer) Play() {
   req, _ := http.NewRequest("GET", p.song.DownloadURL(deezer.MP3128), nil)
 	htrdr, err := httpreaderat.New(nil, req, nil)
@@ -176,11 +188,6 @@ func (p *DeezerPlayer) Play() {
 			//streamer.Seek(format.SampleRate.N(100 * time.Second))
       break
     case <- ticker.C:
-      //log.Print("toggled")
-      //ctrl.Paused = !ctrl.Paused
-      speaker.Lock()
-      log.Print(format.SampleRate.D(streamer.Position()).Round(time.Second))
-      speaker.Unlock()
       break
 		}
 	}
@@ -188,8 +195,8 @@ func (p *DeezerPlayer) Play() {
 
 const (
   STATE_PLAY = iota
-  STATE_STOP // what's the difference between stop and pause?
-  STATE_PAUSE
+  STATE_STOP   // When player is not null
+  STATE_PAUSE  // When player is paused
 )
 
 type DeezerMpd struct {
@@ -208,7 +215,8 @@ func NewDeezerMpd(arl string) (*DeezerMpd, error) {
 		log.Fatalln("Error creating client:", err)
 	}
 
-  query, err := client.Search("Black in Black", "", "", 0, -1)
+  //Colonel Bogey March
+  query, err := client.Search("Thunder", "", "", 0, -1)
   if err != nil {
 		log.Fatalln("query failed", err)
   }
@@ -227,4 +235,11 @@ func NewDeezerMpd(arl string) (*DeezerMpd, error) {
 func (m *DeezerMpd) ChangeState(state uint) error {
   m.state = state
   return nil
+}
+
+func (m *DeezerMpd) State() uint {
+  if m.player == nil {
+    return STATE_STOP
+  }
+  return m.player.State()
 }
