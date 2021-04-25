@@ -4,41 +4,47 @@ import (
     "fmt"
     "net"
     "os"
+    "log"
 
-    "github.com/godeezer/mpd"
+    "github.com/SeungheonOh/deezerd/mpd"
 )
 
 const (
     CONN_HOST = "localhost"
-    CONN_PORT = "3333"
+    CONN_PORT = "6600"
     CONN_TYPE = "tcp"
 )
 
 func main() {
-    // Listen for incoming connections.
-    l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+	arl := os.Getenv("ARL")
+  if arl == "" {
+		log.Fatalln("Missing $ARL")
+	}
+  mpd, err := mpd.NewDeezerMpd(arl)
+  if err != nil {
+    panic(err)
+  }
+
+  l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+  if err != nil {
+    fmt.Println("Error listening:", err.Error())
+    os.Exit(1)
+  }
+
+  defer l.Close()
+  fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
+  for {
+    conn, err := l.Accept()
     if err != nil {
-        fmt.Println("Error listening:", err.Error())
-        os.Exit(1)
+      fmt.Println("Error accepting: ", err.Error())
+      os.Exit(1)
     }
-    // Close the listener when the application closes.
-    defer l.Close()
-    fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-    for {
-        // Listen for an incoming connection.
-        conn, err := l.Accept()
-        if err != nil {
-            fmt.Println("Error accepting: ", err.Error())
-            os.Exit(1)
-        }
-        // Handle connections in a new goroutine.
-        go handleRequest(conn)
-    }
+    go handleRequest(conn, mpd)
+  }
 }
 
-// Handles incoming requests.
-func handleRequest(conn net.Conn) {
+func handleRequest(conn net.Conn, deezermpd *mpd.DeezerMpd) {
   fmt.Println("Serving ", conn.RemoteAddr().String())
-  mpd := NewDeezerMpdServer(conn)
-  mpd.Handle()
+  server := mpd.NewDeezerMpdServer(conn, deezermpd)
+  server.Handle()
 }
