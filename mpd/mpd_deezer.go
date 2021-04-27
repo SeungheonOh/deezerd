@@ -2,7 +2,6 @@ package mpd
 
 import (
 	"errors"
-//	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -16,19 +15,6 @@ import (
 	"github.com/godeezer/lib/deezer"
 	"github.com/snabb/httpreaderat"
 )
-
-/*
-status
-repeat: 0
-random: 0
-single: 0
-consume: 0
-partition: default
-playlist: 1
-playlistlength: 0
-mixrampdb: 0.000000
-state: stop
-*/
 
 type SongReadSeeker struct {
 	r        io.ReadSeeker
@@ -118,6 +104,7 @@ func (r *SongReadSeeker) chunkAt(chunkoff int64) ([]byte, error) {
 type DeezerPlayer struct {
   client *deezer.Client
   song deezer.Song
+
   format *beep.Format
   streamer *beep.StreamSeekCloser
   control *beep.Ctrl
@@ -132,25 +119,57 @@ func NewDeezerPlayer(song deezer.Song, client *deezer.Client) *DeezerPlayer {
 }
 
 func (p *DeezerPlayer) Elapsed() uint {
-  speaker.Lock()
   elapsed := (*p.format).SampleRate.D((*p.streamer).Position()).Round(time.Second)
-  speaker.Unlock()
   return uint(elapsed.Seconds())
 }
 
 func (p *DeezerPlayer) State() uint {
-  if p.control.Paused {
+  if p.control == nil || p.streamer == nil {
+    return STATE_STOP
+  } else if p.control.Paused {
     return STATE_PAUSE
   } else {
     return STATE_PLAY
   }
 }
 
-func (p *DeezerPlayer) Seek(sec float64) {
-  (*p.streamer).Seek((*p.format).SampleRate.N(time.Duration(sec) * time.Second))
+func (p *DeezerPlayer) Pause(pause bool) {
+  speaker.Lock()
+  p.control.Paused = pause
+  speaker.Unlock()
 }
 
-func (p *DeezerPlayer) Play() {
+func (p *DeezerPlayer) Stop() {
+  speaker.Clear()
+  p.streamer = nil
+  p.control = nil
+}
+
+func (p *DeezerPlayer) Seek(sec float64) {
+  speaker.Lock()
+  (*p.streamer).Seek((*p.format).SampleRate.N(time.Duration(sec) * time.Second))
+  speaker.Unlock()
+}
+
+func (p *DeezerPlayer) Play(title int) {
+  p.Stop()
+  if title == 1 {
+    query, err := p.client.Search("Colonel Bogey March", "", "", 0, -1)
+    if err != nil {
+      log.Fatalln("query failed", err)
+    }
+
+    p.song = query.Songs.Data[0]
+  } else {
+    query, err := p.client.Search("Blinding lights", "", "", 0, -1)
+    if err != nil {
+      log.Fatalln("query failed", err)
+    }
+
+    p.song = query.Songs.Data[0]
+
+  }
+
   req, _ := http.NewRequest("GET", p.song.DownloadURL(deezer.MP3128), nil)
 	htrdr, err := httpreaderat.New(nil, req, nil)
 	if err != nil {
@@ -165,11 +184,10 @@ func (p *DeezerPlayer) Play() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer streamer.Close()
 
 	done := make(chan bool)
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-  ctrl := &beep.Ctrl{Streamer: beep.Loop(-1, streamer), Paused: false}
+  ctrl := &beep.Ctrl{Streamer: streamer, Paused: false}
 	speaker.Play(beep.Seq(ctrl, beep.Callback(func() {
 		done <- true
 	})))
@@ -177,20 +195,14 @@ func (p *DeezerPlayer) Play() {
   p.format = &format
   p.streamer = &streamer
 
-	after := time.After(5 * time.Second)
-  ticker := time.NewTicker(time.Second)
-  defer ticker.Stop()
-	for {
-		select {
-		case <-done:
+
+  for {
+    select {
+    case <-done:
+      p.Stop()
       return
-		case <-after:
-			//streamer.Seek(format.SampleRate.N(100 * time.Second))
-      break
-    case <- ticker.C:
-      break
-		}
-	}
+    }
+  }
 }
 
 const (
@@ -215,15 +227,13 @@ func NewDeezerMpd(arl string) (*DeezerMpd, error) {
 		log.Fatalln("Error creating client:", err)
 	}
 
-  //Colonel Bogey March
-  query, err := client.Search("Thunder", "", "", 0, -1)
+  query, err := client.Search("Blinding Lights", "", "", 0, -1)
   if err != nil {
 		log.Fatalln("query failed", err)
   }
 
   song := query.Songs.Data[0]
   player := NewDeezerPlayer(song, client)
-  go player.Play()
   return &DeezerMpd {
     player: player,
     repeat: false,
@@ -238,8 +248,5 @@ func (m *DeezerMpd) ChangeState(state uint) error {
 }
 
 func (m *DeezerMpd) State() uint {
-  if m.player == nil {
-    return STATE_STOP
-  }
   return m.player.State()
 }

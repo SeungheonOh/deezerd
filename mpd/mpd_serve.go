@@ -198,6 +198,7 @@ func (m *DeezerMpdServer) Close(args []string) error {
   return nil
 }
 
+// List all commands
 func (m *DeezerMpdServer) Commands(args []string) error {
   var buffer bytes.Buffer
   for cmdskey := range m.cmds {
@@ -379,14 +380,14 @@ func (m *DeezerMpdServer) Password(args []string) error {
 
 func (m *DeezerMpdServer) Pause(args []string) error {
   if len(args) == 0 {
-    m.mpd.player.control.Paused = !m.mpd.player.control.Paused
+    m.mpd.player.Pause(!m.mpd.player.control.Paused)
     return nil
   }
 
   if args[0] == "1" {
-    m.mpd.player.control.Paused = true
+    m.mpd.player.Pause(true)
   } else {
-    m.mpd.player.control.Paused = false
+    m.mpd.player.Pause(false)
   }
   return nil
 }
@@ -397,6 +398,16 @@ func (m *DeezerMpdServer) Ping(args []string) error {
 }
 
 func (m *DeezerMpdServer) Play(args []string) error {
+  if len(args) == 0 {
+    go m.mpd.player.Play(0)
+    return nil
+  }
+
+  songpos, err := strconv.ParseInt(args[0], 10, 64)
+  if err != nil {
+    return err
+  }
+  go m.mpd.player.Play(int(songpos))
   return nil
 }
 
@@ -420,11 +431,20 @@ func (m *DeezerMpdServer) Playlistid(args []string) error {
 func (m *DeezerMpdServer) Playlistinfo(args []string) error {
   var buffer bytes.Buffer
   fmt.Fprintf(&buffer, `file: deezer stream
-Time: %s
-duration: %s.00
+title: deezer stream
+Album: 1aasdf
+Artist: asf1
+Duration: 123
 Pos: 0
 Id: 1
-`, m.mpd.player.song.Duration, m.mpd.player.song.Duration)
+file: deezer stream
+title: song2
+Album: Braindead
+Artist: hardcoding
+Duration: 123
+Pos: 1
+Id: 2
+`)//, m.mpd.player.song.Duration, m.mpd.player.song.Duration)
   m.conn.Write(buffer.Bytes())
   return nil
 }
@@ -513,7 +533,7 @@ func (m *DeezerMpdServer) Seekcur(args []string) error {
   if err != nil {
     return err
   }
-  m.mpd.player.Seek(sec)
+  go m.mpd.player.Seek(sec)
   return nil
 }
 
@@ -541,33 +561,10 @@ func (m *DeezerMpdServer) Stats(args []string) error {
   return nil
 }
 
+// print status
 func (m *DeezerMpdServer) Status(args []string) error {
   var buffer bytes.Buffer
-  //currsong := m.mpd.player.song
-  /*
-  fmt.Fprintf(&buffer, `partition: deezer
-volume: 100
-repeat: 1
-random: 1
-single: 1
-consume: 0
-playlist: 0
-playlistlength: 1
-state: "play"
-song: 1
-songid: 1
-nextsong: 2
-nextsongid: 2
-elapsed: %d
-time: %d:%s
-duration: %s
-pos: %d
-`, m.mpd.player.Elapsed(), // Elapsed
-  m.mpd.player.Elapsed(), currsong.Duration, // Time
-  currsong.Duration,       // Duration
-  m.mpd.player.Elapsed());
-  */
-
+  state := m.mpd.State()
   fmt.Fprintf(&buffer, `repeat: 0
 random: 0
 single: 0
@@ -579,22 +576,32 @@ mixrampdb: 0.000000
 volume: 100
 state: %s
 song: 9
-songid: 10
-time: %d:%s
+songid: 1
+`,
+  StateName(state))
+
+  if state != STATE_STOP {
+    elapsed := m.mpd.player.Elapsed()
+    fmt.Fprintf(&buffer, `time: %d:%s
 elapsed: %d
 bitrate: 0
 duration: %s
 audio: 44100:24:2
 nextsong: 10
 nextsongid: 11
-`, StateName(m.mpd.State()), m.mpd.player.Elapsed(), m.mpd.player.song.Duration, m.mpd.player.Elapsed(), m.mpd.player.song.Duration)
-
+`,
+    elapsed,
+    m.mpd.player.song.Duration,
+    elapsed,
+    m.mpd.player.song.Duration)
+  }
 
   m.conn.Write(buffer.Bytes())
   return nil
 }
 
 func (m *DeezerMpdServer) Stop(args []string) error {
+  m.mpd.player.Stop()
   return nil
 }
 
@@ -611,7 +618,6 @@ func (m *DeezerMpdServer) Swapid(args []string) error {
 }
 
 func (m *DeezerMpdServer) Tagtypes(args []string) error {
-  m.conn.Write([]byte(""))
   return nil
 }
 
