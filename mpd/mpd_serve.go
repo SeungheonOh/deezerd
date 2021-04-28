@@ -226,16 +226,22 @@ func (m *DeezerMpdServer) Crossfade(args []string) error {
 
 func (m *DeezerMpdServer) Currentsong(args []string) error {
   var buffer bytes.Buffer
-  currsong := m.mpd.player.song
+  currsong := m.mpd.Playlist.Curr()
   fmt.Fprintf(&buffer, `title: %s
 Album: %s
 Artist: %s
 Last-Modified: 2021-04-25T15:31:07Z
 Time: %s
 duration: %s.000
-Pos: 1
-Id: 1
-`, currsong.Title, currsong.AlbumTitle, currsong.ArtistName, currsong.Duration, currsong.Duration)
+Pos: %d
+Id: %d
+`, currsong.Title,
+  currsong.AlbumTitle,
+  currsong.ArtistName,
+  currsong.Duration,
+  currsong.Duration,
+  m.mpd.Playlist.SongPos,
+  m.mpd.Playlist.SongPos + 1)
   m.conn.Write([]byte(buffer.Bytes()))
   return nil
 }
@@ -350,6 +356,7 @@ func (m *DeezerMpdServer) Newpartition(args []string) error {
 }
 
 func (m *DeezerMpdServer) Next(args []string) error {
+  m.mpd.Next()
   return nil
 }
 
@@ -399,7 +406,7 @@ func (m *DeezerMpdServer) Ping(args []string) error {
 
 func (m *DeezerMpdServer) Play(args []string) error {
   if len(args) == 0 {
-    go m.mpd.player.Play(0)
+    m.mpd.PlayCurr()
     return nil
   }
 
@@ -407,7 +414,7 @@ func (m *DeezerMpdServer) Play(args []string) error {
   if err != nil {
     return err
   }
-  go m.mpd.player.Play(int(songpos))
+  m.mpd.Play(int(songpos))
   return nil
 }
 
@@ -430,21 +437,18 @@ func (m *DeezerMpdServer) Playlistid(args []string) error {
 
 func (m *DeezerMpdServer) Playlistinfo(args []string) error {
   var buffer bytes.Buffer
-  fmt.Fprintf(&buffer, `file: deezer stream
-title: deezer stream
-Album: 1aasdf
-Artist: asf1
-Duration: 123
-Pos: 0
-Id: 1
-file: deezer stream
-title: song2
-Album: Braindead
-Artist: hardcoding
-Duration: 123
-Pos: 1
-Id: 2
-`)//, m.mpd.player.song.Duration, m.mpd.player.song.Duration)
+
+  for i, song := range(m.mpd.Playlist.Queue()) {
+    fmt.Fprintf(&buffer, `file: deezer stream
+title: %s
+Album: %s
+Artist: %s
+Duration: %s
+Pos: %d
+Id: %d
+`, song.Title, song.AlbumTitle, song.ArtistName, song.Duration, i, i+1)
+  }
+
   m.conn.Write(buffer.Bytes())
   return nil
 }
@@ -462,6 +466,7 @@ func (m *DeezerMpdServer) Plchangesposid(args []string) error {
 }
 
 func (m *DeezerMpdServer) Previous(args []string) error {
+  m.mpd.Prev()
   return nil
 }
 
@@ -546,6 +551,14 @@ func (m *DeezerMpdServer) Sendmessage(args []string) error {
 }
 
 func (m *DeezerMpdServer) Setvol(args []string) error {
+  if len(args) < 1 {
+    return errors.New("not enough argument")
+  }
+  vol, err := strconv.ParseFloat(args[0], 64)
+  if err != nil {
+    return err
+  }
+  m.mpd.Vol(int(vol))
   return nil
 }
 
@@ -573,12 +586,14 @@ partition: default
 playlist: 2
 playlistlength: 48
 mixrampdb: 0.000000
-volume: 100
+volume: 50
 state: %s
-song: 9
-songid: 1
+song: %d
+songid: %d
 `,
-  StateName(state))
+  StateName(state),
+  m.mpd.Playlist.SongPos,
+  m.mpd.Playlist.SongPos + 1)
 
   if state != STATE_STOP {
     elapsed := m.mpd.player.Elapsed()
@@ -591,9 +606,9 @@ nextsong: 10
 nextsongid: 11
 `,
     elapsed,
-    m.mpd.player.song.Duration,
+    m.mpd.Playlist.Curr().Duration,
     elapsed,
-    m.mpd.player.song.Duration)
+    m.mpd.Playlist.Curr().Duration)
   }
 
   m.conn.Write(buffer.Bytes())
