@@ -138,10 +138,6 @@ func (m *DeezerMpdServer) Handle() {
     }
     req := strings.TrimSpace(rawreq)
 
-    if req != "" {
-      fmt.Println(req)
-    }
-
     args := strings.Split(strings.ReplaceAll(req, "\"", ""), " ")
     cmd, exists := m.cmds[args[0]]
     if exists {
@@ -227,9 +223,10 @@ func (m *DeezerMpdServer) Crossfade(args []string) error {
 func (m *DeezerMpdServer) Currentsong(args []string) error {
   var buffer bytes.Buffer
   currsong := m.mpd.Playlist.Curr()
-  fmt.Fprintf(&buffer, `title: %s
+  fmt.Fprintf(&buffer, `Title: %s
 Album: %s
 Artist: %s
+File: %s
 Last-Modified: 2021-04-25T15:31:07Z
 Time: %s
 duration: %s.000
@@ -238,6 +235,7 @@ Id: %d
 `, currsong.Title,
   currsong.AlbumTitle,
   currsong.ArtistName,
+  currsong.Title,
   currsong.Duration,
   currsong.Duration,
   m.mpd.Playlist.SongPos,
@@ -439,8 +437,8 @@ func (m *DeezerMpdServer) Playlistinfo(args []string) error {
   var buffer bytes.Buffer
 
   for i, song := range(m.mpd.Playlist.Queue()) {
-    fmt.Fprintf(&buffer, `file: deezer stream
-title: %s
+    fmt.Fprintf(&buffer, `File: deezer stream
+Title: %s
 Album: %s
 Artist: %s
 Duration: %s
@@ -583,14 +581,15 @@ random: 0
 single: 0
 consume: 0
 partition: default
-playlist: 2
-playlistlength: 48
+playlist: 0
+playlistlength: %d
 mixrampdb: 0.000000
 volume: 50
 state: %s
 song: %d
 songid: %d
 `,
+  len(m.mpd.Playlist.Queue()),
   StateName(state),
   m.mpd.Playlist.SongPos,
   m.mpd.Playlist.SongPos + 1)
@@ -602,13 +601,15 @@ elapsed: %d
 bitrate: 0
 duration: %s
 audio: 44100:24:2
-nextsong: 10
-nextsongid: 11
+nextsong: %d
+nextsongid: %d
 `,
     elapsed,
     m.mpd.Playlist.Curr().Duration,
     elapsed,
-    m.mpd.Playlist.Curr().Duration)
+    m.mpd.Playlist.Curr().Duration,
+    m.mpd.Playlist.SongPos + 1,
+    m.mpd.Playlist.SongPos + 2)
   }
 
   m.conn.Write(buffer.Bytes())
